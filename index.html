@@ -135,13 +135,12 @@
 
 <div style="background:white;border-bottom:1px solid #e0e0e0">
   <div style="max-width:1200px;margin:0 auto;padding:0 20px;display:flex;gap:4px">
-    <button class="tab active" onclick="showMain('sotish')">🛍 Sotish</button>
-    <button class="tab" onclick="showMain('mahsulotlar')">📦 Mahsulotlar</button>
-    <button class="tab" onclick="showMain('hisobot')">📊 Hisobot</button>
+    <button class="tab active" onclick="showMain(event, 'sotish')">🛍 Sotish</button>
+    <button class="tab" onclick="showMain(event, 'mahsulotlar')">📦 Mahsulotlar</button>
+    <button class="tab" onclick="showMain(event, 'hisobot')">📊 Hisobot</button>
   </div>
 </div>
 
-<!-- SOTISH -->
 <div id="main-sotish" class="tab-content active">
   <div class="container">
     <div class="panel">
@@ -201,7 +200,6 @@
   </div>
 </div>
 
-<!-- MAHSULOTLAR -->
 <div id="main-mahsulotlar" class="tab-content">
   <div style="max-width:1200px;margin:20px auto;padding:0 20px">
     <div class="panel">
@@ -248,7 +246,6 @@
   </div>
 </div>
 
-<!-- HISOBOT -->
 <div id="main-hisobot" class="tab-content">
   <div style="max-width:1200px;margin:20px auto;padding:0 20px">
     <div class="stats-grid" id="stats-grid">
@@ -295,7 +292,7 @@ updateDate();
 setInterval(updateDate, 10000);
 
 // ─── Tab almashtirish ───
-function showMain(name) {
+function showMain(event, name) {
   document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
   document.getElementById('main-' + name).classList.add('active');
@@ -330,7 +327,10 @@ function addProd() {
 // ─── Enter bilan qo'shish ───
 document.addEventListener('DOMContentLoaded', () => {
   ['np-name','np-cat','np-price','np-stock'].forEach(id => {
-    document.getElementById(id).addEventListener('keydown', e => { if(e.key==='Enter') addProd(); });
+    const el = document.getElementById(id);
+    if(el) {
+      el.addEventListener('keydown', e => { if(e.key==='Enter') addProd(); });
+    }
   });
 });
 
@@ -429,6 +429,7 @@ function renderCart() {
   document.getElementById('items-cnt').textContent = cnt + ' ta';
   document.getElementById('total-sum').textContent = fmt(total) + ' so\'m';
   document.getElementById('sell-btn').disabled = false;
+  calcQaytim();
 }
 
 function chQty(id, d) {
@@ -474,13 +475,29 @@ function completeSale() {
   if (!cart.length) return;
   const mijoz = document.getElementById('mijoz').value.trim() || 'Noma\'lum';
   const total = cart.reduce((s, c) => s + c.price * c.qty, 0);
+  const berilgan = parseInt(document.getElementById('berilgan-pul').value) || 0;
+  const diff = berilgan - total;
+  const qaytim = diff > 0 ? diff : 0;
+  
   const now = new Date();
   const sana = now.toLocaleDateString('uz-UZ') + ' ' + now.toLocaleTimeString('uz-UZ', {hour:'2-digit', minute:'2-digit'});
   const items = cart.map(c => ({ name: c.name, qty: c.qty, price: c.price, sum: c.price * c.qty }));
-  sales.unshift({ id: sales.length + 1, mijoz, total, pay: payMethod, sana, items });
+  
+  sales.unshift({ 
+    id: sales.length + 1, 
+    mijoz, 
+    total, 
+    pay: payMethod, 
+    sana, 
+    items,
+    berilgan: payMethod === 'naqd' ? (berilgan || total) : total,
+    qaytim: payMethod === 'naqd' ? qaytim : 0
+  });
+  
   cart.forEach(ci => { const p = products.find(x => x.id === ci.id); if (p) p.stock -= ci.qty; });
   cart = [];
   document.getElementById('mijoz').value = '';
+  document.getElementById('berilgan-pul').value = '';
   save();
   renderCart();
   renderProds();
@@ -516,8 +533,8 @@ function renderHisobot() {
       <td style="font-size:12px;color:#555;max-width:180px">${s.items.map(i=>i.name+(i.qty>1?' ×'+i.qty:'')).join(', ')}</td>
       <td style="text-align:center"><span class="badge badge-${s.pay}">${s.pay==='naqd'?'💵 Naqd':'📱 Click'}</span></td>
       <td style="text-align:right;font-weight:700;color:#1565c0">${fmt(s.total)} so'm</td>
-      <td style="text-align:right;color:#555">${s.pay==='naqd' ? fmt(s.berilgan||s.total)+' so\'m' : '—'}</td>
-      <td style="text-align:right;font-weight:600;color:${(s.qaytim||0)>=0?'#2e7d32':'#c62828'}">${s.pay==='naqd' ? fmt(s.qaytim||0)+' so\'m' : '—'}</td>
+      <td style="text-align:right;color:#555">${s.pay==='naqd' ? fmt(s.berilgan)+' so\'m' : '—'}</td>
+      <td style="text-align:right;font-weight:600;color:#2e7d32">${s.pay==='naqd' ? fmt(s.qaytim)+' so\'m' : '—'}</td>
       <td style="font-size:12px;color:#888">${s.sana}</td>
     </tr>`).join('')}
     </tbody>
@@ -542,7 +559,7 @@ function showNotif(msg) {
   n.className = 'notif';
   n.textContent = msg;
   document.body.appendChild(n);
-  notifTimer = setTimeout(() => n && n.remove(), 2400);
+  notifTimer = setTimeout(() => { if (n && n.parentNode) n.remove(); }, 2400);
 }
 
 // ─── Eksport / Import ───
@@ -554,7 +571,7 @@ function exportData() {
   const d = new Date();
   a.download = 'savdo_' + d.toLocaleDateString('uz-UZ').replace(/\./g,'-') + '.json';
   a.click();
-  showNotif('✅ Ma'lumotlar saqlandi!');
+  showNotif('✅ Ma\'lumotlar saqlandi!');
 }
 
 function importData(e) {
@@ -564,16 +581,16 @@ function importData(e) {
   reader.onload = function(ev) {
     try {
       const data = JSON.parse(ev.target.result);
-      if (!data.products || !data.sales) { showNotif('❗ Fayl noto'g'ri format'); return; }
+      if (!data.products || !data.sales) { showNotif('❗ Fayl noto\'g\'ri format'); return; }
       products = data.products;
       sales = data.sales;
       nextId = data.nextId || products.length + 1;
       save();
       renderProds();
       renderCart();
-      showNotif('✅ Ma'lumotlar yuklandi! ' + products.length + ' ta mahsulot, ' + sales.length + ' ta sotuv');
+      showNotif('✅ Ma\'lumotlar yuklandi! ' + products.length + ' ta mahsulot, ' + sales.length + ' ta sotuv');
     } catch(err) {
-      showNotif('❗ Faylni o'qishda xato');
+      showNotif('❗ Faylni o\'qushda xato');
     }
   };
   reader.readAsText(file);
